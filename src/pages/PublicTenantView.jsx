@@ -126,10 +126,9 @@ export const PublicTenantView = () => {
     );
   }
 
-  // Construct NPCI Compliant P2P Deep Links & Payment Details (Strips ALL whitespace/spaces from pa=)
+  // Construct NPCI Compliant P2P Deep Links & Bill Details matching mobile app MonthlyBreakdown.js
   const getUpiDetails = () => {
     if (!landlord?.upi) return null;
-    // Completely remove all whitespace, non-breaking spaces, zero-width spaces, and %20 from UPI ID
     const cleanUpi = String(landlord.upi)
       .replace(/%20/gi, '')
       .replace(/[\s\u00A0\u200B]+/g, '')
@@ -137,11 +136,18 @@ export const PublicTenantView = () => {
       
     if (!cleanUpi || !cleanUpi.includes('@')) return null;
 
-    // Use Landlord's name accurately
     const payeeName = (landlord.name || landlord.displayName || landlord.email?.split('@')[0] || 'Property Owner').trim();
-    const rawAmt = Number(latestRecord?.pendingAmount || latestRecord?.totalAmount || 0);
+    
+    // Calculate total bill matching MonthlyBreakdown.js (Electricity + Room Rent)
+    const roomRent = Number(room?.rent || room?.rentPrice || 0);
+    const eleBill = Number(latestRecord?.totalAmount || 0);
+    const totalMonthBill = eleBill + roomRent;
+    
+    // Calculate pending/due amount
+    const rawAmt = latestRecord?.pendingAmount !== undefined && latestRecord?.pendingAmount !== null && latestRecord?.pendingAmount > 0
+      ? Number(latestRecord.pendingAmount)
+      : (!latestRecord?.paidStatus ? totalMonthBill : 0);
 
-    // Clean P2P parameters without extra space or forced merchant params that cause app errors
     const simpleParams = `pa=${cleanUpi}&cu=INR`;
     const fullParams = rawAmt > 0 ? `pa=${cleanUpi}&pn=${encodeURIComponent(payeeName)}&am=${rawAmt.toFixed(2)}&cu=INR` : `pa=${cleanUpi}&pn=${encodeURIComponent(payeeName)}&cu=INR`;
 
@@ -150,17 +156,22 @@ export const PublicTenantView = () => {
     return {
       upiId: cleanUpi,
       amount: rawAmt,
+      roomRent,
+      eleBill,
+      totalMonthBill,
       payeeName,
       upiQrApiUrl,
       cleanUrl: `upi://pay?${simpleParams}`,
       fullUrl: `upi://pay?${fullParams}`,
-      gpayUrl: `tez://upi/pay?${simpleParams}`,
-      phonepeUrl: `phonepe://pay?${simpleParams}`,
-      paytmUrl: `paytmmp://pay?${simpleParams}`
     };
   };
 
   const upiInfo = getUpiDetails();
+
+  const roomRent = Number(room?.rent || room?.rentPrice || 0);
+  const latestEleBill = Number(latestRecord?.totalAmount || 0);
+  const latestTotalBill = latestEleBill + roomRent;
+  const latestDueAmount = latestRecord?.pendingAmount > 0 ? Number(latestRecord.pendingAmount) : (!latestRecord?.paidStatus ? latestTotalBill : 0);
 
   const handleCopyUpi = (upiId) => {
     const clean = String(upiId).replace(/%20/gi, '').replace(/[\s\u00A0\u200B]+/g, '').trim();
@@ -234,28 +245,30 @@ export const PublicTenantView = () => {
           </div>
         </div>
 
-        {/* Hero Highlight Card: Latest Bill */}
+        {/* Hero Highlight Card: Monthly Bill Statement (Rent + Electricity) */}
         {latestRecord ? (
           <div className="glass-card" style={{ 
             padding: '22px', 
             marginBottom: '24px', 
-            background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(30, 41, 59, 0.8))',
+            background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.85))',
             border: '1px solid rgba(99, 102, 241, 0.35)',
             boxShadow: '0 0 30px rgba(99, 102, 241, 0.15)'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Zap size={18} style={{ color: '#f59e0b' }} />
-                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f8fafc' }}>Latest Electricity Reading</span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f8fafc' }}>Monthly Bill Statement</span>
               </div>
               <StatusBadge status={latestRecord.paidStatus} paidAmount={latestRecord.paidAmount} pendingAmount={latestRecord.pendingAmount} />
             </div>
 
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', margin: '14px 0 18px 0' }}>
               <div>
-                <span style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase' }}>Total Amount Due</span>
-                <div style={{ fontSize: '2rem', fontWeight: 900, color: '#10b981', letterSpacing: '-0.5px' }}>
-                  ₹{latestRecord.totalAmount?.toLocaleString() || 0}
+                <span style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase' }}>
+                  {latestDueAmount < latestTotalBill && latestRecord.paidStatus ? 'Total Paid' : 'Total Amount Due'}
+                </span>
+                <div style={{ fontSize: '2.1rem', fontWeight: 900, color: '#10b981', letterSpacing: '-0.5px' }}>
+                  ₹{latestDueAmount.toLocaleString()}
                 </div>
               </div>
 
@@ -265,6 +278,48 @@ export const PublicTenantView = () => {
                   {latestRecord.totalUnitBurned || 0} kWh
                 </div>
               </div>
+            </div>
+
+            {/* Itemized Financial Breakdown Box (Matching Mobile App MonthlyBreakdown.js) */}
+            <div style={{
+              background: 'rgba(6, 11, 24, 0.7)',
+              borderRadius: '14px',
+              padding: '14px',
+              marginBottom: '16px',
+              border: '1px solid rgba(99, 102, 241, 0.15)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+              fontSize: '0.84rem'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8' }}>
+                <span>Monthly Room Rent</span>
+                <strong style={{ color: '#f8fafc' }}>₹ {roomRent.toLocaleString()}</strong>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8' }}>
+                <span>Electricity ({latestRecord.totalUnitBurned || 0} units × ₹{latestRecord.perUnit || 10})</span>
+                <strong style={{ color: '#f8fafc' }}>₹ {latestEleBill.toLocaleString()}</strong>
+              </div>
+
+              <div style={{ 
+                display: 'flex', 
+                justify: 'space-between', 
+                paddingTop: '10px', 
+                borderTop: '1px dashed rgba(255,255,255,0.12)', 
+                fontWeight: 700, 
+                fontSize: '0.92rem' 
+              }}>
+                <span style={{ color: '#6366f1' }}>This Month Dues</span>
+                <strong style={{ color: '#10b981' }}>₹ {latestTotalBill.toLocaleString()}</strong>
+              </div>
+
+              {latestRecord.pendingAmount > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#f59e0b', paddingTop: '4px' }}>
+                  <span>Remaining Balance Due</span>
+                  <strong>₹ {latestRecord.pendingAmount.toLocaleString()}</strong>
+                </div>
+              )}
             </div>
 
             {/* Meter Breakdown Grid */}
@@ -413,6 +468,9 @@ export const PublicTenantView = () => {
                   month: 'short', day: 'numeric', year: 'numeric'
                 }) : `Record #${records.length - index}`;
 
+                const recEleBill = Number(rec.totalAmount || 0);
+                const recTotalStatement = recEleBill + roomRent;
+
                 return (
                   <div key={rec.id} style={{
                     padding: '14px',
@@ -431,14 +489,14 @@ export const PublicTenantView = () => {
                       <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>
                         {rec.previousReading || 0} → <span style={{ color: '#6366f1' }}>{rec.currentReading || 0} kWh</span>
                       </div>
-                      <div style={{ fontSize: '0.75rem', color: '#f59e0b', marginTop: '2px' }}>
-                        {rec.totalUnitBurned || 0} units @ ₹{rec.perUnit || 0}/unit
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '2px' }}>
+                        Rent: <span style={{ color: '#f8fafc' }}>₹{roomRent}</span> | Ele: <span style={{ color: '#f59e0b' }}>₹{recEleBill}</span> ({rec.totalUnitBurned || 0} units)
                       </div>
                     </div>
 
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: '1rem', fontWeight: 800, color: '#10b981', marginBottom: '4px' }}>
-                        ₹{rec.totalAmount?.toLocaleString() || 0}
+                        ₹{recTotalStatement.toLocaleString()}
                       </div>
                       <StatusBadge status={rec.paidStatus} paidAmount={rec.paidAmount} pendingAmount={rec.pendingAmount} />
                     </div>
