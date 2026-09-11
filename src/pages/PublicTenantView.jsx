@@ -337,7 +337,7 @@ export const PublicTenantView = () => {
                 </div>
                 */}
 
-                {/* Single Direct UPI Payment Button - Commented out for now
+                {/* Single Direct UPI Payment Button */}
                 <a 
                   href={upiInfo.cleanUrl} 
                   className="btn btn-primary" 
@@ -353,7 +353,6 @@ export const PublicTenantView = () => {
                 >
                   <CreditCard size={18} /> Pay via Any UPI App
                 </a>
-                */}
 
                 {/* Payment QR Image Display - Commented out for now
                 {showQr && (
